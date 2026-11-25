@@ -439,7 +439,7 @@ class MainActivity : Activity() {
                     sendResponse(
                         id,
                         true,
-                        getDeviceInfo()
+                        this@MainActivity.getDeviceInfo()
                     )
                 }
 
@@ -503,7 +503,7 @@ class MainActivity : Activity() {
                             sendResponse(
                                 id,
                                 true,
-                                openAppInfo(
+                                this@MainActivity.openAppInfo(
                                     extractAppIdentifier(payload)
                                 )
                             )
