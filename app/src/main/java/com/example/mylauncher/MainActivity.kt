@@ -3,6 +3,7 @@ package com.example.mylauncher
 import android.app.Activity
 import android.app.WallpaperManager
 import android.app.role.RoleManager
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -475,6 +476,32 @@ class MainActivity : Activity() {
                     )
                 }
 
+                "system.openUrl" -> {
+
+                    runOnUiThread {
+
+                        try {
+
+                            sendResponse(
+                                id,
+                                true,
+                                openUrlNative(
+                                    payload.optString("url", "")
+                                )
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = "URL_FAILED",
+                                message = e.message ?: "Could not open the link"
+                            )
+                        }
+                    }
+                }
+
                 "launcher.openHomeSettings" -> {
 
                     runOnUiThread {
@@ -551,6 +578,7 @@ class MainActivity : Activity() {
                                         "launcher.requestDefault",
                                         "wallpaper.pickImage",
                                         "system.openWifiSettings",
+                                        "system.openUrl",
                                         "system.openAirplaneSettings",
                                         "device.getInfo",
                                         "launcher.getStatus",
@@ -572,7 +600,8 @@ class MainActivity : Activity() {
                                 id,
                                 true,
                                 launchAppNative(
-                                    extractAppIdentifier(payload)
+                                    extractAppIdentifier(payload),
+                                    extractActivityName(payload)
                                 )
                             )
 
@@ -1004,9 +1033,38 @@ class MainActivity : Activity() {
     // APP LAUNCHING
     // --------------------------------------------------
 
-    private fun launchAppNative(value: String): JSONObject {
+    private fun isInstalled(packageName: String): Boolean {
 
-        val packageName = resolvePackageName(value)
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun extractActivityName(payload: JSONObject): String {
+
+        val keys = arrayOf("activityName", "activity", "component")
+
+        for (key in keys) {
+
+            val value = payload.optString(key, "")
+
+            if (value.isNotBlank() && value != "null") {
+                return value.trim()
+            }
+        }
+
+        return ""
+    }
+
+    private fun launchAppNative(
+        value: String,
+        activityName: String = ""
+    ): JSONObject {
+
+        var packageName = resolvePackageName(value)
 
         if (packageName.isBlank()) {
 
@@ -1015,17 +1073,64 @@ class MainActivity : Activity() {
             )
         }
 
-        var launchIntent =
-            packageManager.getLaunchIntentForPackage(packageName)
-
-        if (launchIntent == null) {
+        if (!isInstalled(packageName)) {
 
             val byLabel = resolveByLabel(value)
 
-            if (byLabel.isNotBlank() && byLabel != packageName) {
+            if (byLabel.isNotBlank()) packageName = byLabel
+        }
 
-                launchIntent =
-                    packageManager.getLaunchIntentForPackage(byLabel)
+        // 1. the exact activity the phone reported for this app
+        if (activityName.isNotBlank()) {
+
+            try {
+
+                val explicit = Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(
+                        ComponentName(packageName, activityName)
+                    )
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+                if (packageManager.resolveActivity(explicit, 0) != null) {
+
+                    startActivity(explicit)
+
+                    return JSONObject()
+                        .put("launched", true)
+                        .put("packageName", packageName)
+                }
+
+            } catch (_: Exception) {
+                /* fall through to the system intent */
+            }
+        }
+
+        // 2. the system's own launch intent
+        var launchIntent =
+            packageManager.getLaunchIntentForPackage(packageName)
+
+        // 3. the first launcher activity the package declares
+        if (launchIntent == null) {
+
+            val query = Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+
+            val match = packageManager
+                .queryIntentActivities(query, 0)
+                .firstOrNull {
+                    it.activityInfo.packageName == packageName
+                }
+
+            if (match != null) {
+
+                launchIntent = Intent(query)
+                    .setComponent(
+                        ComponentName(
+                            packageName,
+                            match.activityInfo.name
+                        )
+                    )
             }
         }
 
@@ -1167,6 +1272,33 @@ class MainActivity : Activity() {
         ) ?: return false
 
         return resolved.activityInfo?.packageName == packageName
+    }
+
+    private fun openUrlNative(url: String): JSONObject {
+
+        val trimmed = url.trim()
+
+        if (
+            trimmed.isBlank() ||
+            !(
+                trimmed.startsWith("https://") ||
+                trimmed.startsWith("http://")
+            )
+        ) {
+
+            throw IllegalArgumentException(
+                "INVALID_URL: Only http and https links"
+            )
+        }
+
+        startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(trimmed))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+
+        return JSONObject()
+            .put("opened", true)
+            .put("url", trimmed)
     }
 
     private fun openHomeSettingsNative(): JSONObject {
