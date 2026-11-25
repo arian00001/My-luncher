@@ -12,9 +12,12 @@
 
     <application
         android:allowBackup="true"
-        android:label="My Launcher"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:label="Monolith"
         android:usesCleartextTraffic="false"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:theme="@style/LauncherTheme"
         android:hardwareAccelerated="true">
         <activity
             android:name=".MainActivity"
