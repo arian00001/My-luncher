@@ -1009,6 +1009,15 @@ class MainActivity : Activity() {
 
     private fun isDefaultLauncher(): Boolean {
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+
+            val manager = getSystemService(RoleManager::class.java)
+
+            if (manager != null && manager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                return manager.isRoleHeld(RoleManager.ROLE_HOME)
+            }
+        }
+
         val intent = Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_HOME)
 
