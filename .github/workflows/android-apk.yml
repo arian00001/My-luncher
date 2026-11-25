@@ -1,62 +1,32 @@
-name: Build Android APK
 
-on:
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
 
-permissions:
-  contents: read
+android {
+    namespace = "com.example.mylauncher"
 
-jobs:
-  build:
-    name: Build MyLauncher APK
-    runs-on: ubuntu-latest
+    compileSdk = 35
 
-    steps:
-      # 1. Checkout repository
-      - name: Checkout source
-        uses: actions/checkout@v4
+    defaultConfig {
+        applicationId = "com.example.mylauncher"
 
-      # 2. Install Java 17
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+        minSdk = 26
+        targetSdk = 35
 
-      # 3. Install Android SDK
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+        versionCode = 1
+        versionName = "1.0.0"
+    }
 
-      # 4. Install Gradle
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+    // Fix Java JVM target mismatch
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
 
-      # 5. Verify environment
-      - name: Verify Build Environment
-        run: |
-          java -version
-          gradle --version
-          sdkmanager --list_installed
-
-      # 6. Build APK and show detailed Kotlin errors
-      - name: Build Debug APK
-        run: |
-          gradle --no-daemon --console=plain --stacktrace --info assembleDebug
-
-      # 7. Upload APK
-      - name: Upload APK Artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: MyLauncher-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+    // Fix Kotlin JVM target mismatch
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
