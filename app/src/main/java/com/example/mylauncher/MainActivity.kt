@@ -130,7 +130,7 @@ class MainActivity : Activity() {
 
                 window.__nativeBridgePending = pending;
 
-                function request(method, payload) {
+                function send(method, payload) {
 
                     return new Promise(function(resolve, reject) {
 
@@ -167,9 +167,12 @@ class MainActivity : Activity() {
                             nativeBridge.postMessage(
                                 JSON.stringify({
                                     type: 'request',
+                                    v: 2,
                                     id: id,
+                                    requestId: id,
                                     method: method,
-                                    payload: payload || {}
+                                    payload: payload || {},
+                                    params: payload || {}
                                 })
                             );
 
@@ -196,15 +199,28 @@ class MainActivity : Activity() {
                         return;
                     }
 
-                    var item =
+                    var id =
                         response &&
-                        pending[response.id];
+                        (response.id || response.requestId);
+
+                    if (
+                        id &&
+                        window.LauncherBridge &&
+                        typeof window.LauncherBridge.resolve === 'function'
+                    ) {
+                        window.LauncherBridge.resolve(id, response);
+                        return;
+                    }
+
+                    var item =
+                        id &&
+                        pending[id];
 
                     if (!item) return;
 
                     clearTimeout(item.timeout);
 
-                    delete pending[response.id];
+                    delete pending[id];
 
                     if (response.success) {
 
@@ -212,20 +228,20 @@ class MainActivity : Activity() {
 
                     } else {
 
-                        var error = new Error(
+                        var failure = new Error(
                             response.error &&
                             response.error.message
                                 ? response.error.message
                                 : 'NATIVE_ERROR'
                         );
 
-                        error.code =
+                        failure.code =
                             response.error &&
                             response.error.code
                                 ? response.error.code
                                 : 'NATIVE_ERROR';
 
-                        item.reject(error);
+                        item.reject(failure);
                     }
                 };
 
@@ -235,7 +251,23 @@ class MainActivity : Activity() {
 
                 window.AndroidLauncher = api;
 
-                api.request = request;
+                // The website sends one JSON envelope string: forward it untouched.
+                api.request = function(envelope) {
+
+                    var raw =
+                        typeof envelope === 'string'
+                            ? envelope
+                            : JSON.stringify(envelope || {});
+
+                    if (
+                        !nativeBridge ||
+                        typeof nativeBridge.postMessage !== 'function'
+                    ) {
+                        throw new Error('NATIVE_BRIDGE_UNAVAILABLE');
+                    }
+
+                    nativeBridge.postMessage(raw);
+                };
 
                 api.launchApp = function(value) {
 
@@ -244,27 +276,27 @@ class MainActivity : Activity() {
                             ? value
                             : { appName: String(value || '') };
 
-                    return request('apps.launch', payload);
+                    return send('apps.launch', payload);
                 };
 
                 api.getInstalledApps = function() {
-                    return request('apps.getInstalled', {});
+                    return send('apps.getInstalled', {});
                 };
 
                 api.requestDefaultLauncher = function() {
-                    return request('launcher.requestDefault', {});
+                    return send('launcher.requestDefault', {});
                 };
 
                 api.pickWallpaper = function() {
-                    return request('wallpaper.pickImage', {});
+                    return send('wallpaper.pickImage', {});
                 };
 
                 api.openWifiSettings = function() {
-                    return request('system.openWifiSettings', {});
+                    return send('system.openWifiSettings', {});
                 };
 
                 api.openAirplaneSettings = function() {
-                    return request('system.openAirplaneSettings', {});
+                    return send('system.openAirplaneSettings', {});
                 };
 
                 api.openAppInfo = function(value) {
@@ -274,11 +306,11 @@ class MainActivity : Activity() {
                             ? value
                             : { packageName: String(value || '') };
 
-                    return request('apps.openAppInfo', payload);
+                    return send('apps.openAppInfo', payload);
                 };
 
                 api.getDeviceInfo = function() {
-                    return request('device.getInfo', {});
+                    return send('device.getInfo', {});
                 };
 
                 window.dispatchEvent(
@@ -443,6 +475,41 @@ class MainActivity : Activity() {
                     )
                 }
 
+                "launcher.getStatus" -> {
+
+                    sendResponse(
+                        id,
+                        true,
+                        JSONObject().put("isDefault", isDefaultLauncher())
+                    )
+                }
+
+                "settings.openDefaultLauncher" -> {
+
+                    runOnUiThread {
+
+                        try {
+
+                            requestDefaultLauncherNative()
+
+                            sendResponse(
+                                id,
+                                true,
+                                JSONObject().put("requested", true)
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = "LAUNCHER_UNAVAILABLE",
+                                message = e.message ?: "Could not open the default launcher dialog"
+                            )
+                        }
+                    }
+                }
+
                 "bridge.getCapabilities" -> {
 
                     sendResponse(
@@ -461,7 +528,9 @@ class MainActivity : Activity() {
                                         "wallpaper.pickImage",
                                         "system.openWifiSettings",
                                         "system.openAirplaneSettings",
-                                        "device.getInfo"
+                                        "device.getInfo",
+                                        "launcher.getStatus",
+                                        "settings.openDefaultLauncher"
                                     )
                                 )
                             )
