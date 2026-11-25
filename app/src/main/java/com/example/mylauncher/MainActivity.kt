@@ -785,7 +785,16 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun launchApp(value: String): String {
-            dispatchDirect("apps.launch", value)
+            val payload = try {
+                JSONObject(value)
+            } catch (_: Exception) {
+                JSONObject().put("label", value)
+            }
+            dispatchDirect(
+                "apps.launch",
+                extractAppIdentifier(payload),
+                extractActivityName(payload)
+            )
             return JSONObject().put("accepted", true).toString()
         }
 
@@ -850,7 +859,8 @@ class MainActivity : Activity() {
 
         private fun dispatchDirect(
             method: String,
-            value: String
+            value: String,
+            activityName: String = ""
         ) {
 
             runOnUiThread {
@@ -859,9 +869,11 @@ class MainActivity : Activity() {
 
                     when (method) {
 
-                        "apps.launch" -> launchAppNative(value)
+                        "apps.launch" ->
+                            launchAppNative(value, activityName)
 
-                        "apps.openAppInfo" -> openAppInfo(value)
+                        "apps.openAppInfo" ->
+                            this@MainActivity.openAppInfo(value)
 
                         "launcher.requestDefault" ->
                             requestDefaultLauncherNative()
