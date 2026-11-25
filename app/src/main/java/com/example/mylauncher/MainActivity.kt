@@ -475,6 +475,30 @@ class MainActivity : Activity() {
                     )
                 }
 
+                "launcher.openHomeSettings" -> {
+
+                    runOnUiThread {
+
+                        try {
+
+                            sendResponse(
+                                id,
+                                true,
+                                openHomeSettingsNative()
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = "SETTINGS_UNAVAILABLE",
+                                message = e.message ?: "Settings unavailable"
+                            )
+                        }
+                    }
+                }
+
                 "launcher.getStatus" -> {
 
                     sendResponse(
@@ -530,6 +554,7 @@ class MainActivity : Activity() {
                                         "system.openAirplaneSettings",
                                         "device.getInfo",
                                         "launcher.getStatus",
+                                        "launcher.openHomeSettings",
                                         "settings.openDefaultLauncher"
                                     )
                                 )
@@ -884,6 +909,34 @@ class MainActivity : Activity() {
         return ""
     }
 
+    private fun resolveByLabel(raw: String): String {
+
+        if (raw.isBlank()) return ""
+
+        val wanted = raw
+            .lowercase()
+            .replace(Regex("[^a-z0-9]"), "")
+
+        if (wanted.isEmpty()) return ""
+
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+
+        for (info in packageManager.queryIntentActivities(intent, 0)) {
+
+            val label = info.loadLabel(packageManager)
+                .toString()
+                .lowercase()
+                .replace(Regex("[^a-z0-9]"), "")
+
+            if (label == wanted) {
+                return info.activityInfo.packageName
+            }
+        }
+
+        return ""
+    }
+
     private fun resolvePackageName(value: String): String {
 
         val raw = value.trim()
@@ -940,7 +993,10 @@ class MainActivity : Activity() {
             "music" ->
                 "com.google.android.apps.youtube.music"
 
-            else -> raw
+            else -> {
+                val byLabel = resolveByLabel(raw)
+                if (byLabel.isNotBlank()) byLabel else raw
+            }
         }
     }
 
@@ -959,11 +1015,26 @@ class MainActivity : Activity() {
             )
         }
 
-        val launchIntent =
+        var launchIntent =
             packageManager.getLaunchIntentForPackage(packageName)
-                ?: throw IllegalArgumentException(
-                    "APP_NOT_FOUND: $packageName"
-                )
+
+        if (launchIntent == null) {
+
+            val byLabel = resolveByLabel(value)
+
+            if (byLabel.isNotBlank() && byLabel != packageName) {
+
+                launchIntent =
+                    packageManager.getLaunchIntentForPackage(byLabel)
+            }
+        }
+
+        if (launchIntent == null) {
+
+            throw IllegalArgumentException(
+                "APP_NOT_FOUND: $packageName"
+            )
+        }
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
@@ -1098,22 +1169,39 @@ class MainActivity : Activity() {
         return resolved.activityInfo?.packageName == packageName
     }
 
+    private fun openHomeSettingsNative(): JSONObject {
+
+        try {
+
+            startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+
+        } catch (_: Exception) {
+
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+
+        return JSONObject()
+            .put("opened", true)
+            .put("isDefault", isDefaultLauncher())
+    }
+
     private fun requestDefaultLauncherNative() {
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        try {
 
-            val manager = getSystemService(RoleManager::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 
-            if (
-                manager != null &&
-                manager.isRoleAvailable(RoleManager.ROLE_HOME)
-            ) {
+                val manager = getSystemService(RoleManager::class.java)
 
-                if (manager.isRoleHeld(RoleManager.ROLE_HOME)) {
+                if (
+                    manager != null &&
+                    manager.isRoleAvailable(RoleManager.ROLE_HOME)
+                ) {
 
-                    completeHomeRequest(true, true)
-
-                } else {
+                    if (manager.isRoleHeld(RoleManager.ROLE_HOME)) {
+                        completeHomeRequest(true, true)
+                        return
+                    }
 
                     startActivityForResult(
                         manager.createRequestRoleIntent(
@@ -1121,10 +1209,23 @@ class MainActivity : Activity() {
                         ),
                         homeRoleRequestCode
                     )
-                }
 
-                return
+                    return
+                }
             }
+
+        } catch (_: Exception) {
+            /* some phones have no working role dialog: fall through */
+        }
+
+        try {
+
+            startActivity(Intent(Settings.ACTION_HOME_SETTINGS))
+
+            return
+
+        } catch (_: Exception) {
+            /* fall through to the chooser */
         }
 
         val homeIntent = Intent(Intent.ACTION_MAIN)
