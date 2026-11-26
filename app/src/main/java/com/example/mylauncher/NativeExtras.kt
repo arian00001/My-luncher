@@ -74,6 +74,7 @@ object NativeExtras {
         var playing = audio.isMusicActive
         var title = ""
         var artist = ""
+        var artwork: android.graphics.Bitmap? = null
 
         try {
             val manager = activity.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
@@ -90,6 +91,9 @@ object NativeExtras {
                     ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
                     ?: ""
                 playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
+                artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ARTWORK)
             }
         } catch (_: Exception) {
             /* notification access not granted yet: keys still control the player */
@@ -100,6 +104,26 @@ object NativeExtras {
             .put("playing", playing)
             .put("title", title)
             .put("artist", artist)
+            .put("artwork", artworkData(artwork))
+    }
+
+    /** Album art as a small data URL the widget can show right away. */
+    private fun artworkData(bitmap: android.graphics.Bitmap?): String {
+
+        if (bitmap == null) return ""
+
+        return try {
+
+            val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, 160, 160, true)
+            val output = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.PNG, 80, output)
+
+            "data:image/png;base64," +
+                android.util.Base64.encodeToString(output.toByteArray(), android.util.Base64.NO_WRAP)
+
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     fun dispatchMediaKey(activity: Activity, keyCode: Int) {
