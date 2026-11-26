@@ -8,6 +8,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -26,11 +30,20 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), SensorEventListener {
 
     private lateinit var webView: WebView
 
     private val worker = Executors.newSingleThreadExecutor()
+
+    // Smoothed tilt stream for the wallpaper and the web parallax layers.
+    private var gravityX = 0f
+    private var gravityY = 0f
+    private var tiltBaseX: Float? = null
+    private var tiltBaseY: Float? = null
+    private var lastTiltAt = 0L
+    private var lastTiltX = 2f
+    private var lastTiltY = 2f
 
     private val startUrl = "https://my-luncher.base44.app/"
     private val originHost = "my-luncher.base44.app"
@@ -108,6 +121,13 @@ class MainActivity : Activity() {
             webView.restoreState(savedInstanceState)
         } else {
             webView.loadUrl(startUrl)
+        }
+
+        val sensors = getSystemService(SENSOR_SERVICE) as? SensorManager
+        sensors?.let { manager ->
+            manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { sensor ->
+                manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+            }
         }
     }
 
@@ -391,9 +411,11 @@ class MainActivity : Activity() {
             if (::webView.isInitialized) {
 
                 webView.evaluateJavascript(
-                    "window.dispatchEvent(" +
-                    "new CustomEvent($eventName," +
-                    "{detail:JSON.parse($eventData)}));",
+                    "(function(){" +
+                    "var n=$eventName,d=JSON.parse($eventData);" +
+                    "try{if(window.LauncherEvents&&typeof window.LauncherEvents.emit==='function')" +
+                    "{window.LauncherEvents.emit(n,d);}}catch(e){}" +
+                    "try{window.dispatchEvent(new CustomEvent(n,{detail:d}));}catch(e){}});",
                     null
                 )
             }
@@ -1719,6 +1741,43 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------
+    // TILT STREAM
+    // --------------------------------------------------
+
+    override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+
+        // Low-pass the raw accelerometer so the layers glide instead of shaking.
+        gravityX += (event.values[0] - gravityX) * 0.14f
+        gravityY += (event.values[1] - gravityY) * 0.14f
+
+        if (tiltBaseX == null) {
+            tiltBaseX = gravityX
+            tiltBaseY = gravityY
+        }
+
+        val tiltX = (-((gravityX - (tiltBaseX ?: gravityX)) / 3.5f)).coerceIn(-1f, 1f)
+        val tiltY = (-((gravityY - (tiltBaseY ?: gravityY)) / 3.5f)).coerceIn(-1f, 1f)
+
+        if (Math.abs(tiltX - lastTiltX) < 0.008f && Math.abs(tiltY - lastTiltY) < 0.008f) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastTiltAt < 40L) return
+        lastTiltAt = now
+        lastTiltX = tiltX
+        lastTiltY = tiltY
+
+        emitEvent(
+            "device.tilt",
+            JSONObject()
+                .put("x", tiltX.toDouble())
+                .put("y", tiltY.toDouble())
+        )
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    // --------------------------------------------------
     // CLEANUP
     // --------------------------------------------------
 
@@ -1732,6 +1791,8 @@ class MainActivity : Activity() {
 
             webView.destroy()
         }
+
+        (getSystemService(SENSOR_SERVICE) as? SensorManager)?.unregisterListener(this)
 
         worker.shutdownNow()
 
