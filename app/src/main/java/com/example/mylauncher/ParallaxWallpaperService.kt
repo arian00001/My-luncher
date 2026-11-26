@@ -131,14 +131,21 @@ class ParallaxWallpaperService : WallpaperService() {
         }
 
         /** Double tap on the wallpaper keeps the big clock on everywhere (AOD style). */
-        override fun onCommand(what: Int, x: Int, y: Int, z: Int, extras: Bundle?): Boolean {
+        override fun onCommand(
+            what: Int,
+            x: Int,
+            y: Int,
+            z: Int,
+            extras: Bundle?,
+            resultRequested: Boolean
+        ): Boolean {
             if (what == WallpaperManager.COMMAND_TAP) {
                 clockAlways = !clockAlways
                 prefs.edit().putBoolean("clock_always", clockAlways).apply()
                 drawFrame()
                 return true
             }
-            return super.onCommand(what, x, y, z, extras)
+            return super.onCommand(what, x, y, z, extras, resultRequested)
         }
 
         private fun loadLayers() {
