@@ -1,7 +1,6 @@
 package com.example.mylauncher
 
 import android.app.KeyguardManager
-import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -18,7 +17,6 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -57,11 +55,6 @@ class ParallaxWallpaperService : WallpaperService() {
         private var front: Bitmap? = null
         private var digits: Array<Path>? = null
         private var ambientWidth = 0
-
-        private val prefs by lazy {
-            getSharedPreferences("monolith_wallpaper", Context.MODE_PRIVATE)
-        }
-        private var clockAlways = prefs.getBoolean("clock_always", false)
 
         private var targetX = 0f
         private var targetY = 0f
@@ -130,24 +123,6 @@ class ParallaxWallpaperService : WallpaperService() {
             super.onDestroy()
         }
 
-        /** Double tap on the wallpaper keeps the big clock on everywhere (AOD style). */
-        override fun onCommand(
-            what: Int,
-            x: Int,
-            y: Int,
-            z: Int,
-            extras: Bundle?,
-            resultRequested: Boolean
-        ): Boolean {
-            if (what == WallpaperManager.COMMAND_TAP) {
-                clockAlways = !clockAlways
-                prefs.edit().putBoolean("clock_always", clockAlways).apply()
-                drawFrame()
-                return true
-            }
-            return super.onCommand(what, x, y, z, extras, resultRequested)
-        }
-
         private fun loadLayers() {
             back = BitmapFactory.decodeFile(backFile.path) ?: back
             front = if (frontFile.exists()) BitmapFactory.decodeFile(frontFile.path) else null
@@ -191,7 +166,7 @@ class ParallaxWallpaperService : WallpaperService() {
 
                 drawLayer(canvas, back, width, height, 22f, 1.18f)
                 drawAmbient(canvas, width, height)
-                if (isLocked() || clockAlways) drawClock(canvas, width, height)
+                if (isLocked()) drawClock(canvas, width, height)
                 drawLayer(canvas, front, width, height, 95f, 1.18f)
             } finally {
                 try {
