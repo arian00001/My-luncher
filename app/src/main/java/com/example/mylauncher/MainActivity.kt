@@ -53,6 +53,7 @@ class MainActivity : Activity(), SensorEventListener {
 
     private val wallpaperRequestCode = 4101
     private val homeRoleRequestCode = 4102
+    private val uninstallRequestCode = 4103
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -633,6 +634,8 @@ class MainActivity : Activity(), SensorEventListener {
                                         "apps.getInstalled",
                                         "apps.launch",
                                         "apps.openAppInfo",
+                                        "apps.uninstall",
+                                        "apps.getInfo",
                                         "launcher.requestDefault",
                                         "wallpaper.pickImage",
                                         "wallpaper.setParallax",
@@ -901,6 +904,54 @@ class MainActivity : Activity(), SensorEventListener {
                                 false,
                                 code = "SETTINGS_UNAVAILABLE",
                                 message = e.message ?: "Settings unavailable"
+                            )
+                        }
+                    }
+                }
+
+                "apps.uninstall" -> {
+
+                    runOnUiThread {
+
+                        try {
+
+                            sendResponse(
+                                id,
+                                true,
+                                uninstallAppNative(extractAppIdentifier(payload))
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = errorCode(e),
+                                message = e.message ?: "Could not uninstall the app"
+                            )
+                        }
+                    }
+                }
+
+                "apps.getInfo" -> {
+
+                    worker.execute {
+
+                        try {
+
+                            sendResponse(
+                                id,
+                                true,
+                                appInfoNative(extractAppIdentifier(payload))
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = errorCode(e),
+                                message = e.message ?: "Could not read the app"
                             )
                         }
                     }
@@ -1586,6 +1637,70 @@ class MainActivity : Activity(), SensorEventListener {
             .put("packageName", packageName)
     }
 
+    /** Opens Android's own uninstall dialog for the app. */
+    private fun uninstallAppNative(value: String): JSONObject {
+
+        val packageName = resolvePackageName(value)
+
+        if (packageName.isBlank()) {
+            throw IllegalArgumentException("INVALID_PACKAGE: Package name required")
+        }
+
+        if (packageName == this.packageName) {
+            throw IllegalArgumentException("UNINSTALL_FAILED: The launcher cannot uninstall itself")
+        }
+
+        try {
+            packageManager.getPackageInfo(packageName, 0)
+        } catch (_: Exception) {
+            throw IllegalArgumentException("APP_NOT_FOUND: $packageName is not installed")
+        }
+
+        startActivityForResult(
+            Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName")),
+            uninstallRequestCode
+        )
+
+        return JSONObject()
+            .put("requested", true)
+            .put("packageName", packageName)
+    }
+
+    /** Name, version and install dates of one app. */
+    private fun appInfoNative(value: String): JSONObject {
+
+        val packageName = resolvePackageName(value)
+
+        if (packageName.isBlank()) {
+            throw IllegalArgumentException("INVALID_PACKAGE: Package name required")
+        }
+
+        val info = try {
+            packageManager.getPackageInfo(packageName, 0)
+        } catch (_: Exception) {
+            throw IllegalArgumentException("APP_NOT_FOUND: $packageName is not installed")
+        }
+
+        val app = info.applicationInfo
+        val flags = app?.flags ?: 0
+
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+
+        return JSONObject()
+            .put("packageName", packageName)
+            .put("label", app?.let { packageManager.getApplicationLabel(it).toString() } ?: packageName)
+            .put("versionName", info.versionName ?: "")
+            .put("versionCode", versionCode)
+            .put("system", flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0)
+            .put("installedAt", info.firstInstallTime)
+            .put("updatedAt", info.lastUpdateTime)
+    }
+
     // --------------------------------------------------
     // SYSTEM SETTINGS
     // --------------------------------------------------
@@ -1859,7 +1974,61 @@ class MainActivity : Activity(), SensorEventListener {
     // CLEANUP
     // --------------------------------------------------
 
+    // --------------------------------------------------
+    // LIVE MEDIA
+    // --------------------------------------------------
+
+    private val mediaHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private var lastMediaState = ""
+
+    // The song widget must follow whatever player is running, so the media
+    // session is watched here and every change is pushed to the page.
+    private val mediaWatch = object : Runnable {
+
+        override fun run() {
+
+            try {
+
+                val state = NativeExtras.currentMediaState(this@MainActivity)
+                val encoded = state.toString()
+
+                if (encoded != lastMediaState) {
+                    lastMediaState = encoded
+                    emitEvent("media.changed", state)
+                }
+
+            } catch (_: Exception) {
+                /* no player running right now */
+            }
+
+            mediaHandler.postDelayed(this, 1200)
+        }
+    }
+
+    override fun onResume() {
+
+        super.onResume()
+
+        // Coming back from an uninstall or the app info screen: rescan the apps.
+        if (::webView.isInitialized) {
+            emitEvent("apps.listChanged", JSONObject())
+        }
+
+        mediaHandler.removeCallbacks(mediaWatch)
+        mediaHandler.postDelayed(mediaWatch, 700)
+    }
+
+    override fun onPause() {
+
+        mediaHandler.removeCallbacks(mediaWatch)
+
+        super.onPause()
+    }
+
     override fun onDestroy() {
+
+        mediaHandler.removeCallbacks(mediaWatch)
 
         if (::webView.isInitialized) {
 
