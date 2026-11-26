@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.KeyEvent
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -577,6 +578,13 @@ class MainActivity : Activity() {
                                         "apps.openAppInfo",
                                         "launcher.requestDefault",
                                         "wallpaper.pickImage",
+                                        "wallpaper.setParallax",
+                                        "media.getState",
+                                        "media.play",
+                                        "media.pause",
+                                        "media.next",
+                                        "media.previous",
+                                        "media.requestAccess",
                                         "system.openWifiSettings",
                                         "system.openUrl",
                                         "system.openAirplaneSettings",
@@ -600,7 +608,7 @@ class MainActivity : Activity() {
                                 id,
                                 true,
                                 launchAppNative(
-                                    extractAppIdentifier(payload),
+                                    resolveLaunchTarget(payload),
                                     extractActivityName(payload)
                                 )
                             )
@@ -685,6 +693,78 @@ class MainActivity : Activity() {
                             )
                         }
                     }
+                }
+
+                "wallpaper.setParallax" -> {
+
+                    try {
+
+                        sendResponse(
+                            id,
+                            true,
+                            NativeExtras.applyParallaxWallpaper(this@MainActivity, payload)
+                        )
+
+                    } catch (e: Exception) {
+
+                        sendResponse(
+                            id,
+                            false,
+                            code = "WALLPAPER_FAILED",
+                            message = e.message ?: "Could not apply the wallpaper"
+                        )
+                    }
+                }
+
+                "media.getState" -> {
+
+                    try {
+
+                        sendResponse(
+                            id,
+                            true,
+                            NativeExtras.currentMediaState(this@MainActivity)
+                        )
+
+                    } catch (e: Exception) {
+
+                        sendResponse(
+                            id,
+                            false,
+                            code = "MEDIA_FAILED",
+                            message = e.message ?: "Could not read the media session"
+                        )
+                    }
+                }
+
+                "media.play" -> {
+
+                    NativeExtras.dispatchMediaKey(this@MainActivity, KeyEvent.KEYCODE_MEDIA_PLAY)
+                    sendResponse(id, true, JSONObject().put("ok", true))
+                }
+
+                "media.pause" -> {
+
+                    NativeExtras.dispatchMediaKey(this@MainActivity, KeyEvent.KEYCODE_MEDIA_PAUSE)
+                    sendResponse(id, true, JSONObject().put("ok", true))
+                }
+
+                "media.next" -> {
+
+                    NativeExtras.dispatchMediaKey(this@MainActivity, KeyEvent.KEYCODE_MEDIA_NEXT)
+                    sendResponse(id, true, JSONObject().put("ok", true))
+                }
+
+                "media.previous" -> {
+
+                    NativeExtras.dispatchMediaKey(this@MainActivity, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+                    sendResponse(id, true, JSONObject().put("ok", true))
+                }
+
+                "media.requestAccess" -> {
+
+                    NativeExtras.openNotificationAccess(this@MainActivity)
+                    sendResponse(id, true, JSONObject().put("opened", true))
                 }
 
                 "wallpaper.pickImage" -> {
@@ -921,6 +1001,30 @@ class MainActivity : Activity() {
     // --------------------------------------------------
     // APP NAME AND PACKAGE RESOLUTION
     // --------------------------------------------------
+
+    /**
+     * A stored package this phone does not have (a cloned or renamed app) must
+     * not block the launch: fall back to the app's own name.
+     */
+    private fun resolveLaunchTarget(payload: JSONObject): String {
+
+        val identifier = extractAppIdentifier(payload)
+
+        val label = payload.optString("appName", "")
+            .ifBlank { payload.optString("label", "") }
+            .trim()
+
+        if (
+            identifier.contains('.') &&
+            !identifier.contains(' ') &&
+            !isInstalled(identifier) &&
+            label.isNotEmpty()
+        ) {
+            return label
+        }
+
+        return identifier
+    }
 
     private fun extractAppIdentifier(
         payload: JSONObject

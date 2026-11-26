@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wallpaper_label">Monolith parallax</string>
+    <string name="wallpaper_description">Two-layer parallax wallpaper for the home and lock screen</string>
+    <string name="now_playing_label">Monolith now playing</string>
+</resources>
