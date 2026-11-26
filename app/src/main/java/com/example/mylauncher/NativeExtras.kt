@@ -93,7 +93,6 @@ object NativeExtras {
                 playing = controller.playbackState?.state == PlaybackState.STATE_PLAYING
                 artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                     ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ARTWORK)
             }
         } catch (_: Exception) {
             /* notification access not granted yet: keys still control the player */
