@@ -69,7 +69,9 @@ class MainActivity : Activity(), SensorEventListener {
             allowContentAccess = true
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(false)
-            cacheMode = WebSettings.LOAD_DEFAULT
+            // Open from the on-device cache when there is no network, so the
+            // launcher still starts offline instead of showing a blank screen.
+            cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         }
 
         webView.webChromeClient = WebChromeClient()
