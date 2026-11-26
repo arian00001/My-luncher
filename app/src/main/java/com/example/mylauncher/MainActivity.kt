@@ -1819,7 +1819,9 @@ class MainActivity : Activity(), SensorEventListener {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
 
-            window.setDecorFitsSystemWindows(!enabled)
+            // Edge to edge even while the bar is hidden, otherwise Android
+            // leaves an empty black strip where the status bar used to be.
+            window.setDecorFitsSystemWindows(false)
             val controller = window.insetsController ?: return
 
             if (enabled) {
