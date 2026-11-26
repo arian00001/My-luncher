@@ -60,6 +60,8 @@ class MainActivity : Activity(), SensorEventListener {
         webView = WebView(this)
         setContentView(webView)
 
+        applyImmersive(true)
+
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -1819,11 +1821,11 @@ class MainActivity : Activity(), SensorEventListener {
             val controller = window.insetsController ?: return
 
             if (enabled) {
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.hide(WindowInsets.Type.statusBars())
                 controller.systemBarsBehavior =
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                controller.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.show(WindowInsets.Type.statusBars())
             }
 
             return
@@ -1834,11 +1836,17 @@ class MainActivity : Activity(), SensorEventListener {
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         } else {
             0
         }
+    }
+
+    // The status bar (and its small clock) is never shown again: re-hide it
+    // whenever Android brings it back after a dialog, a swipe or a resume.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersive(true)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
