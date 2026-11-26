@@ -17,6 +17,9 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -497,6 +500,34 @@ class MainActivity : Activity(), SensorEventListener {
                         true,
                         this@MainActivity.getDeviceInfo()
                     )
+                }
+
+                "system.setImmersive" -> {
+
+                    val immersiveOn = payload.optBoolean("enabled", true)
+
+                    runOnUiThread {
+
+                        try {
+
+                            applyImmersive(immersiveOn)
+
+                            sendResponse(
+                                id,
+                                true,
+                                JSONObject().put("enabled", immersiveOn)
+                            )
+
+                        } catch (e: Exception) {
+
+                            sendResponse(
+                                id,
+                                false,
+                                code = "IMMERSIVE_FAILED",
+                                message = e.message ?: "Could not change the system bars"
+                            )
+                        }
+                    }
                 }
 
                 "system.openUrl" -> {
@@ -1762,7 +1793,7 @@ class MainActivity : Activity(), SensorEventListener {
         if (Math.abs(tiltX - lastTiltX) < 0.008f && Math.abs(tiltY - lastTiltY) < 0.008f) return
 
         val now = System.currentTimeMillis()
-        if (now - lastTiltAt < 40L) return
+        if (now - lastTiltAt < 16L) return
         lastTiltAt = now
         lastTiltX = tiltX
         lastTiltY = tiltY
@@ -1773,6 +1804,41 @@ class MainActivity : Activity(), SensorEventListener {
                 .put("x", tiltX.toDouble())
                 .put("y", tiltY.toDouble())
         )
+    }
+
+    // --------------------------------------------------
+    // IMMERSIVE MODE
+    // --------------------------------------------------
+
+    /** Hides the status bar (and its small clock) while a full-screen page is open. */
+    private fun applyImmersive(enabled: Boolean) {
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+
+            window.setDecorFitsSystemWindows(!enabled)
+            val controller = window.insetsController ?: return
+
+            if (enabled) {
+                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior =
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+            }
+
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = if (enabled) {
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        } else {
+            0
+        }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
